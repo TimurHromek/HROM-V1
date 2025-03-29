@@ -23,10 +23,11 @@ CONFIG = {
     "dataset": "daily_dialog",
     "vocab_size": 32000,
     "tokenizer_train_samples": 100000,
-    "learning_rate": 3e-4,
+    "learning_rate": 1e-4,  # Lowered learning rate
     "max_turns": 6,
     "max_checkpoints": 5,
-    "num_epochs": 50  # Increased number of epochs for longer training
+    "num_epochs": 100,  # Increased number of epochs
+    "grad_accum_steps": 4  # Gradient accumulation steps
 }
 
 class RotaryEmbedding(nn.Module):
@@ -242,27 +243,37 @@ class HROMTrainer:
         self.tokenizer = tokenizer
 
     def train_step(self, batch):
-        self.optimizer.zero_grad()
         autocast = torch.cuda.amp.autocast if self.device.type == "cuda" else nullcontext
         with autocast():
             outputs = self.model(
                 batch["input_ids"].to(self.device),
                 attention_mask=batch["attention_mask"].to(self.device)
             )
-            loss = nn.CrossEntropyLoss(ignore_index=self.tokenizer.token_to_id("<pad>"))(
+            original_loss = nn.CrossEntropyLoss(ignore_index=self.tokenizer.token_to_id("<pad>"))(
                 outputs.view(-1, CONFIG["vocab_size"]),
                 batch["labels"].view(-1).to(self.device)
             )
+            scaled_loss = original_loss / CONFIG["grad_accum_steps"]
+        
         if self.scaler is not None:
-            self.scaler.scale(loss).backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            self.scaler.scale(scaled_loss).backward()
+        else:
+            scaled_loss.backward()
+            
+        return original_loss.item()
+
+    def clip_and_step(self):
+        if self.scaler is not None:
+            self.scaler.unscale_(self.optimizer)
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+        
+        if self.scaler is not None:
             self.scaler.step(self.optimizer)
             self.scaler.update()
         else:
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
             self.optimizer.step()
-        return loss.item()
+            
+        self.optimizer.zero_grad()
 
 class SafetyManager:
     def __init__(self, model, tokenizer):
@@ -344,17 +355,30 @@ def train():
     safety = SafetyManager(model, tokenizer)
     
     step = 0
+    optimizer_step = 0
+    total_loss = 0.0
     model.train()
+    
     for epoch in range(CONFIG["num_epochs"]):
         for batch in dataloader:
             loss = trainer_obj.train_step(batch)
-            if step % CONFIG["checkpoint_interval"] == 0:
-                checkpoint_manager.save(model, trainer_obj.optimizer, step)
-                safety.debug_generation()
-            if step % CONFIG["debug_interval"] == 0:
-                print(f"Step {step} | Loss: {loss:.4f}")
-                safety.debug_generation("What's the meaning of life?")
+            total_loss += loss
             step += 1
+
+            if step % CONFIG["grad_accum_steps"] == 0:
+                trainer_obj.clip_and_step()
+                avg_loss = total_loss / CONFIG["grad_accum_steps"]
+                total_loss = 0.0
+
+                if optimizer_step % CONFIG["checkpoint_interval"] == 0:
+                    checkpoint_manager.save(model, trainer_obj.optimizer, optimizer_step)
+                    safety.debug_generation()
+                
+                if optimizer_step % CONFIG["debug_interval"] == 0:
+                    print(f"Optimizer Step {optimizer_step} | Loss: {avg_loss:.4f}")
+                    safety.debug_generation("What's the meaning of life?")
+                
+                optimizer_step += 1
 
 if __name__ == "__main__":
     train()
