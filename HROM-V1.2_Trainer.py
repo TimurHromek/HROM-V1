@@ -1,3 +1,19 @@
+"""
+Copyright 2025 Timur Hromek
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
 import os
 # Set parallelism env var *before* importing tokenizers
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -5,7 +21,6 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-# Import necessary dataset functions, including concatenate_datasets if needed later
 from datasets import load_dataset, disable_caching, concatenate_datasets
 from tokenizers import Tokenizer, models, trainers, pre_tokenizers, processors, decoders
 import math
@@ -42,12 +57,12 @@ CONFIG = {
     "warmup_steps": 500,
     "max_turns": 8, # Max turns applied per dialogue
     "max_checkpoints": 5,
-    "num_epochs": 6,  # Further adjusted epochs (more data)
+    "num_epochs": 25,  # Further adjusted epochs (more data)
     "grad_accum_steps": 8 # Keep grad accum reasonable
 }
 
 # --- Model Definition (HROM, HROMBlock, HROMAttention, SwiGLU, RoPE) ---
-
+# (These classes remain unchanged)
 
 class RotaryEmbedding(nn.Module):
     def __init__(self, dim):
