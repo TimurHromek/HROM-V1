@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Configuration
 CONFIG = {
     "dim": 512,
-    "n_layers": 6,
+    "n_layers": 8,
     "n_heads": 8,
     "ff_dim": 2048,
     "dropout": 0.1,
@@ -42,11 +42,11 @@ CONFIG = {
     "vocab_size": 32000,
     # Adjusted samples per dataset: with 4 datasets, 50k each gives 200k total samples
     "tokenizer_train_samples_per_dataset": 50000,
-    "learning_rate": 3e-5,
-    "warmup_steps": 500,
+    "learning_rate": 2e-5,
+    "warmup_steps": 1000,
     "max_turns": 8, # Max turns applied per dialogue
     "max_checkpoints": 5,
-    "num_epochs": 25,
+    "num_epochs": 30,
     "grad_accum_steps": 8 # Keep grad accum reasonable
 }
 
