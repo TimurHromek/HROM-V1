@@ -20,11 +20,15 @@ import random # For shuffling combined data
 # disable_caching()
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    force=True  # Add this
+)
 
 # Configuration
 CONFIG = {
-    "dim": 512,
+    "dim": 768,
     "n_layers": 8,
     "n_heads": 8,
     "ff_dim": 2048,
@@ -268,7 +272,7 @@ class TokenizerTrainer:
             logging.info(f"Loading daily_dialog for tokenizer training (max {samples_per_dataset} dialogues)...")
             try:
                 # Limit dialogues loaded directly using slicing
-                dd_dataset = load_dataset("daily_dialog", split=f"train[:{samples_per_dataset}]")
+                dd_dataset = load_dataset("daily_dialog", split=f"train[:{samples_per_dataset}]", trust_remote_code=True) # Add trust_remote_code=True
                 logging.info("Processing daily_dialog...")
                 for entry in dd_dataset:
                     formatted_dialogue = []
@@ -288,7 +292,7 @@ class TokenizerTrainer:
             logging.info(f"Loading empathetic_dialogues for tokenizer training (max {samples_per_dataset} dialogues)...")
             try:
                 # Load more initially to ensure we get enough unique conversations (adjust multiplier if needed)
-                ed_dataset = load_dataset("empathetic_dialogues", split=f"train[:{samples_per_dataset * 3}]") # Load *up to* 3x needed
+                ed_dataset = load_dataset("empathetic_dialogues", split=f"train[:{samples_per_dataset * 3}]", trust_remote_code=True) # Add trust_remote_code=True
                 logging.info("Processing empathetic_dialogues...")
                 conversations = defaultdict(list)
                 processed_conv_count = 0
@@ -333,7 +337,7 @@ class TokenizerTrainer:
             logging.info(f"Loading blended_skill_talk for tokenizer training (max {samples_per_dataset} dialogues)...")
             try:
                 # Load dialogues - BST is structured differently, slice directly
-                bst_dataset = load_dataset("blended_skill_talk", split=f"train[:{samples_per_dataset}]")
+                bst_dataset = load_dataset("blended_skill_talk", split=f"train[:{samples_per_dataset}]", trust_remote_code=True) # Add trust_remote_code=True
                 logging.info("Processing blended_skill_talk...")
                 for entry in bst_dataset:
                     formatted_dialogue = []
@@ -361,7 +365,7 @@ class TokenizerTrainer:
             pc_dataset_name = "AlekseyKorshuk/persona-chat"
             logging.info(f"Loading {pc_dataset_name} for tokenizer training (max {samples_per_dataset} dialogues)...")
             try:
-                pc_dataset = load_dataset(pc_dataset_name, split=f"train[:{samples_per_dataset}]") # Correct dataset identifier
+                pc_dataset = load_dataset(pc_dataset_name, split=f"train[:{samples_per_dataset}]", trust_remote_code=True) # Add trust_remote_code=True, Correct dataset identifier
                 logging.info(f"Processing {pc_dataset_name}...")
                 for entry in pc_dataset:
                     # PersonaChat often has 'utterances' containing 'history'
@@ -452,7 +456,7 @@ class CombinedChatDataset(Dataset):
         if "daily_dialog" in CONFIG["datasets"]:
             logging.info("Loading and processing daily_dialog dataset...")
             try:
-                dd_dataset = load_dataset("daily_dialog", split="train")
+                dd_dataset = load_dataset("daily_dialog", split="train", trust_remote_code=True) # Add trust_remote_code=True
                 logging.info(f"Processing {len(dd_dataset)} daily_dialog conversations...")
                 for entry in dd_dataset:
                     conversation = []
@@ -472,7 +476,7 @@ class CombinedChatDataset(Dataset):
         if "empathetic_dialogues" in CONFIG["datasets"]:
             logging.info("Loading and processing empathetic_dialogues dataset...")
             try:
-                ed_dataset = load_dataset("empathetic_dialogues", split="train")
+                ed_dataset = load_dataset("empathetic_dialogues", split="train", trust_remote_code=True) # Add trust_remote_code=True
                 logging.info("Grouping empathetic_dialogues by conversation ID...")
                 conversations_grouped = defaultdict(list)
                 for entry in ed_dataset:
@@ -509,7 +513,7 @@ class CombinedChatDataset(Dataset):
         if "blended_skill_talk" in CONFIG["datasets"]:
             logging.info("Loading and processing blended_skill_talk dataset...")
             try:
-                bst_dataset = load_dataset("blended_skill_talk", split="train")
+                bst_dataset = load_dataset("blended_skill_talk", split="train", trust_remote_code=True) # Add trust_remote_code=True
                 logging.info(f"Processing {len(bst_dataset)} blended_skill_talk conversations...")
                 for entry in bst_dataset:
                     conversation = []
@@ -539,7 +543,7 @@ class CombinedChatDataset(Dataset):
             pc_dataset_name = "AlekseyKorshuk/persona-chat"
             logging.info(f"Loading and processing {pc_dataset_name} dataset...")
             try:
-                pc_dataset = load_dataset(pc_dataset_name, split="train") # Correct dataset identifier
+                pc_dataset = load_dataset(pc_dataset_name, split="train", trust_remote_code=True) # Add trust_remote_code=True, Correct dataset identifier
                 logging.info(f"Processing {len(pc_dataset)} {pc_dataset_name} conversations...")
                 for entry in pc_dataset:
                     conversation = []
@@ -604,8 +608,12 @@ class CombinedChatDataset(Dataset):
              formatted_ids = formatted_ids[:self.max_length]
              # Ensure last token isn't partial (though unlikely with BPE)
              # If the truncated sequence ends with a role ID, it's probably bad, remove it.
-             if formatted_ids[-1] == self.user_id or formatted_ids[-1] == self.assistant_id:
+             if formatted_ids and (formatted_ids[-1] == self.user_id or formatted_ids[-1] == self.assistant_id):
                   formatted_ids.pop()
+             # If after popping the role ID, it's still too long (unlikely), truncate again
+             if len(formatted_ids) > self.max_length:
+                 formatted_ids = formatted_ids[:self.max_length]
+
 
         # Handle case of extremely short sequences after processing
         if len(formatted_ids) < 2: # Need at least BOS and one other token for input/label pair
@@ -1121,6 +1129,7 @@ def train():
     if not os.path.exists(tokenizer_path):
         logging.info(f"Combined tokenizer '{CONFIG['tokenizer_name']}' not found. Training tokenizer...")
         try:
+            # Pass trust_remote_code=True to load_dataset calls inside tokenizer training
             tokenizer_trainer.train(CONFIG["datasets"])
         except Exception as e:
              logging.error(f"Failed during tokenizer training: {e}", exc_info=True)
@@ -1147,6 +1156,14 @@ def train():
          CONFIG['vocab_size'] = tokenizer.get_vocab_size()
     model = HROM()
 
+    # --- Calculate and Log Model Parameters ---
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    logging.info(f"Model initialized. Total parameters: {total_params:,}")
+    logging.info(f"Trainable parameters: {trainable_params:,}")
+    logging.info(f"Parameters (Millions): Total={total_params/1e6:.2f}M, Trainable={trainable_params/1e6:.2f}M")
+
+
     # --- Dataset and DataLoader ---
     logging.info("Setting up combined dataset and dataloader...")
     try:
@@ -1155,7 +1172,7 @@ def train():
               logging.info(f"Checking cache for '{ds_name}'...")
               try:
                   # Load just the first example to trigger download/cache check
-                  _ = load_dataset(ds_name, split="train[:1]", download_mode="reuse_cache_if_exists")
+                  _ = load_dataset(ds_name, split="train[:1]", download_mode="reuse_cache_if_exists", trust_remote_code=True) # Add trust_remote_code
               except Exception as e:
                   # Log error but try to continue, main dataset loading will handle final error
                   logging.error(f"Could not pre-check dataset '{ds_name}': {e}")
