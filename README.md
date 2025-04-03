@@ -86,6 +86,10 @@ class SwiGLU(nn.Module):
         return x * nn.functional.gelu(gate)
 ```
 
+## Pre-trained model.
+The pre-trained model can be found on HuggingFace at https://huggingface.co/TimurHromek/HROM-V1
+If you wish to interact with the model in it's current version, you can here https://huggingface.co/spaces/TimurHromek/HROM-V1
+
 ## License
 
 Apache License 2.0  
